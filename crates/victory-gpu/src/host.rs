@@ -9341,11 +9341,23 @@ impl Meter {
         // `VICTORY_LIVE_FAULTS=1`: one short warn line a second when draws are dropped
         // (pair with `VICTORY_LOG=warn` so the rest of the census stays quiet).
         let (meshlet_dispatches, meshlet_groups) = crate::draw::take_meshlet_collect();
+        let drop_why = crate::pipeline::take_drops();
         if live_faults() && (dropped >= 1.0 || meshlet_dispatches > 0) {
+            let top: String = drop_why
+                .iter()
+                .take(3)
+                .map(|(why, n)| format!("{why}={:.0}", *n as f64 / frames))
+                .collect::<Vec<_>>()
+                .join("; ");
+            let why = if top.is_empty() {
+                String::new()
+            } else {
+                format!(", why: {top}")
+            };
             if meshlet_dispatches > 0 {
                 tracing::warn!(
                     target: "victory_gpu::faults",
-                    "{fps:.1} fps, {ms:.1} ms/frame, draws {draws:.0}, dropped {dropped:.0}/frame (making {making}), left_out {left_out:.0}/frame, meshlet_collect left_out {meshlet_d:.0}/frame ({meshlet_g:.0} groups)",
+                    "{fps:.1} fps, {ms:.1} ms/frame, draws {draws:.0}, dropped {dropped:.0}/frame (making {making}), left_out {left_out:.0}/frame, meshlet_collect left_out {meshlet_d:.0}/frame ({meshlet_g:.0} groups){why}",
                     making = crate::pipeline::making(),
                     meshlet_d = meshlet_dispatches as f64 / frames,
                     meshlet_g = meshlet_groups as f64 / frames,
@@ -9353,7 +9365,7 @@ impl Meter {
             } else {
                 tracing::warn!(
                     target: "victory_gpu::faults",
-                    "{fps:.1} fps, {ms:.1} ms/frame, draws {draws:.0}, dropped {dropped:.0}/frame (making {making}), left_out {left_out:.0}/frame",
+                    "{fps:.1} fps, {ms:.1} ms/frame, draws {draws:.0}, dropped {dropped:.0}/frame (making {making}), left_out {left_out:.0}/frame{why}",
                     making = crate::pipeline::making(),
                 );
             }
@@ -9442,9 +9454,7 @@ impl Meter {
         let card = crate::shadow::card_stats();
         #[cfg(feature = "diagnostics")]
         let slow = crate::watch::slow_asks();
-        // Over the same frames as the counts above.
-        #[cfg(feature = "diagnostics")]
-        let drops = crate::pipeline::take_drops();
+        // `drop_why` already taken above for the live-faults line.
         if self.logged.elapsed() >= std::time::Duration::from_secs(5) {
             self.logged = std::time::Instant::now();
             tracing::info!(
@@ -9728,7 +9738,7 @@ impl Meter {
                 );
                 traffic::line(self.copy_stats_frames as f64);
                 crate::copystat::log(std::mem::take(&mut self.copy_stats_frames) as f64);
-                for (why, n) in drops.iter().take(40) {
+                for (why, n) in drop_why.iter().take(40) {
                     tracing::info!(
                         "dropped {:.1}/frame without a host pipeline: {why}",
                         *n as f64 / frames

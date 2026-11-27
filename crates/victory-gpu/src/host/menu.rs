@@ -38,10 +38,9 @@ const GLYPH: (u32, u32) = (5, 7);
 const CELL: (u32, u32) = (6, 9);
 const COLUMNS: u32 = 60;
 /// Lines of the box: a title, a help line, a blank, the settings shown, a
-/// blank, what the line picked does (`ABOUT`, else blank), a note and the
-/// repository's link.
+/// blank, what the line picked does (`ABOUT`, else blank), and a note.
 const ROWS: usize = 20;
-const LINES: u32 = ROWS as u32 + 9;
+const LINES: u32 = ROWS as u32 + 8;
 /// The action that preloads shaders, and what is said of it while it is picked.
 const PRELOAD: usize = 2;
 const ABOUT_PRELOAD: [&str; 3] = [
@@ -58,8 +57,6 @@ const ABOUT_MFG: [&str; 3] = [
 ];
 /// The note after the first Enter on it: the second one does it.
 const CONFIRM_PRELOAD: &str = "ENTER AGAIN: SAVE, CLOSE THE GAME AND PRELOAD";
-/// The last line of the box: where this build comes from.
-const REPO: &str = "GITHUB.COM/TRUSTNO1-CODER/VICTORY-NVIDIA";
 const RIM: u32 = 4;
 const UPLOADS: usize = 4;
 
@@ -414,7 +411,6 @@ impl Menu {
         };
         out.extend(about.iter().map(|l| (*l).to_owned()));
         out.push(if self.note.is_empty() { "* = CHANGED: APPLIES AT THE NEXT START UNLESS LIVE".to_owned() } else { self.note.clone() });
-        out.push(REPO.to_owned());
         out
     }
 
@@ -702,7 +698,7 @@ mod tests {
     }
 
     #[test]
-    fn the_link_is_always_right_under_the_note() {
+    fn the_note_is_always_last() {
         let mut menu = Menu { values: ITEMS.iter().map(|_| String::new()).collect(), started: Vec::new(), at: 0, note: String::new(), changed: false, painted: None, buffers: None, failed: false };
         menu.started = menu.values.clone();
         for note in ["", "SAVED"] {
@@ -712,10 +708,9 @@ mod tests {
                 let lines = menu.lines();
                 assert_eq!(lines.len(), LINES as usize);
                 let n = lines.len();
-                assert!(lines[n - 2].starts_with("* = CHANGED") || lines[n - 2] == note, "{}", lines[n - 2]);
-                assert_eq!(lines[n - 1], REPO);
+                assert!(lines[n - 1].starts_with("* = CHANGED") || lines[n - 1] == note, "{}", lines[n - 1]);
                 // What a preload costs, and what MFG Unlocker is, is said while it is picked, and only then.
-                let about = &lines[n - 5..n - 2];
+                let about = &lines[n - 4..n - 1];
                 if at == ITEMS.len() + PRELOAD {
                     assert_eq!(about, ABOUT_PRELOAD);
                 } else if at < ITEMS.len() && ITEMS[at].var == MFG {

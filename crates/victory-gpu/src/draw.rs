@@ -1825,13 +1825,16 @@ impl State {
     fn prepare_for(&mut self, list: &HostList, indexed: bool, mesh: bool) -> bool {
         #[cfg(feature = "diagnostics")]
         if crate::pipeline::is_skipped(self.pipeline as This) {
+            crate::pipeline::note_why("skipped pipeline".into());
             return false;
         }
         let Some(p) = crate::pipeline::host_pipeline(self.pipeline as This) else {
+            crate::pipeline::note_drop(self.pipeline as This);
             return false;
         };
         if p.compute || p.mesh != mesh {
             once!(mesh, "a draw or mesh dispatch with another kind of pipeline");
+            crate::pipeline::note_why("draw/mesh kind mismatch".into());
             return false;
         }
         if p.rects && self.topology != RECTANGLES {
@@ -1839,6 +1842,7 @@ impl State {
             once!("a rectangle pipeline drawn with another topology");
         }
         if !self.bind(list, p, false) {
+            crate::pipeline::note_why("bind failed".into());
             return false;
         }
         let l = &list.list;
@@ -3798,11 +3802,9 @@ impl State {
                 "a dispatch without a host pipeline dropped"
             );
             DROPPED.fetch_add(1, Ordering::Relaxed);
+            crate::pipeline::note_drop(self.pipeline as This);
             #[cfg(feature = "diagnostics")]
-            {
-                crate::pipeline::note_drop(self.pipeline as This);
-                self.list_dropped_roots([x, y, z]);
-            }
+            self.list_dropped_roots([x, y, z]);
             return;
         };
         if !p.compute {
@@ -3811,6 +3813,7 @@ impl State {
         }
         if !self.bind(list, p, true) {
             DROPPED.fetch_add(1, Ordering::Relaxed);
+            crate::pipeline::note_why("bind failed".into());
             // A stage of the structure builder that cannot be bound is a
             // dropped stage: the others stop too.
             if crate::pipeline::is_builder(self.pipeline as This) {
@@ -4397,8 +4400,7 @@ impl State {
             };
         if !ran {
             DROPPED.fetch_add(1, Ordering::Relaxed);
-            #[cfg(feature = "diagnostics")]
-            dropped(self.pipeline);
+            // Reason tagged in [`prepare_for`] / bind when possible.
         }
     }
 
@@ -4884,8 +4886,6 @@ impl State {
         }
         if !ran {
             DROPPED.fetch_add(1, Ordering::Relaxed);
-            #[cfg(feature = "diagnostics")]
-            dropped(self.pipeline);
         }
     }
 
@@ -5067,8 +5067,6 @@ impl State {
         }
         if !ran {
             DROPPED.fetch_add(1, Ordering::Relaxed);
-            #[cfg(feature = "diagnostics")]
-            dropped(self.pipeline);
         }
     }
 }

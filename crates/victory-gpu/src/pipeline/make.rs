@@ -216,12 +216,11 @@ impl Pending {
     }
 }
 
-/// Why a pipeline has no host pipeline (diagnostics): left out on purpose
-/// ([`left_out`]), its shaders that do not translate, else "refused" or
-/// "being made"; `None` if it has one. (A pipeline left out is never made:
-/// it was counted as "being made" in every frame, some 630 indirect
-/// ray-tracing resolves a frame in gameplay, while no pipeline was queued.)
-#[cfg(feature = "diagnostics")]
+/// Why a pipeline has no host pipeline: left out on purpose ([`left_out`]),
+/// its shaders that do not translate, else "refused" or "being made"; `None`
+/// if it has one. (A pipeline left out is never made: it was counted as
+/// "being made" in every frame, some 630 indirect ray-tracing resolves a
+/// frame in gameplay, while no pipeline was queued.)
 pub(crate) fn missing(p: &Pending) -> Option<String> {
     if let Some(why) = p.left_out {
         return Some(format!("left out on purpose: {why}"));
