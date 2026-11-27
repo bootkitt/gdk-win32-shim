@@ -277,13 +277,14 @@ Upstream VIctory-NVIDIA figures (their measured PC): Windows 11, Ryzen 7 9800X3D
 Local run on **GeForce RTX 4070 12 GB**, Series X 2560x1440, DLSS Quality,
 fault-only live log (`scripts\live-faults.ps1` / `LIVE_FAULTS.cmd`). After the
 console pipeline create slots **0x1c8 / 0x218** were wired to the stream path
-(they used to return `E_NOTIMPL` and drop every draw that used those PSOs):
+(they used to return `E_NOTIMPL` and drop every draw that used those PSOs),
+and with `CS_CollectTriangles_Meshlets` left out on wave32 hosts:
 
 | | |
 |---|---|
 | Cold open / first minutes | about **3–8 fps** while `making` is hundreds (driver compiling pipelines) |
-| After pipelines catch up (`making 0`) | about **16–26 fps** rendered (~38–62 ms/frame) in interior scenes |
-| Steady drops | about **300–550** draws/frame still dropped; about **750–800** left out on purpose (ray-tracing passes without the BVH builder) |
+| After pipelines catch up (`making 0`) | about **24–27 fps** rendered (~37–42 ms/frame) in interior scenes |
+| Steady drops | about **420–470** draws/frame still dropped; about **640** left out on purpose (ray-tracing passes without the BVH builder, plus meshlet collect on wave32) |
 | Frame generation on RTX 40 | **2x** at most (asking for 3x is clamped by the driver) |
 
 `victory warm` after a play session cuts the cold stutter on the next start.
@@ -295,11 +296,12 @@ What is known to be wrong:
   menu's RAY TRACING, turns it on: slow and with a broken picture on this
   base). An estimate stands in for indirect light and reflections. Those
   passes show up as `left_out` in the live fault log.
-- **Some draws still drop with `making 0`.** A few shaders fail to translate
-  (example: compute `6b82bc7d22016cb5`, wave64 with no wave32 lowering); others
-  wait on host views or texture room. Use `LIVE_FAULTS.cmd -DumpShaders` (or
-  `VICTORY_SHADER_SAVE`) and the refused dump under
-  `%LOCALAPPDATA%\victory\shader-refused` when chasing them.
+- **Some draws still drop with `making 0`.** Host views, texture room, and
+  other unfinished paths. The wave64 meshlet collect
+  (`6b82bc7d22016cb5`) is left out on 32-lane hosts instead of failing
+  translate (`VICTORY_MESHLET_COLLECT=1` restores the refused path). Use
+  `LIVE_FAULTS.cmd -DumpShaders` (or `VICTORY_SHADER_SAVE`) and the refused
+  dump under `%LOCALAPPDATA%\victory\shader-refused` when chasing drops.
 - **Frame generation needs room in the card's memory.** The layer fills the
   card with textures up to its budget; with frame generation on from the start
   the launcher holds a fifth of the budget back (a little less while it is only
