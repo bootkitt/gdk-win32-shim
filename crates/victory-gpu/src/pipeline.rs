@@ -484,6 +484,12 @@ pub(crate) fn take_left_out() -> u64 {
     make::take_left_out()
 }
 
+/// Whether `this` is `CS_CollectTriangles_Meshlets` left out on a 32-lane host.
+#[cfg(windows)]
+pub(crate) fn is_meshlet_collect_left_out(this: This) -> bool {
+    !this.is_null() && make::is_meshlet_collect_left_out(&pipeline(this).host)
+}
+
 /// Draws and dispatches dropped since the last [`take_drops`], by reason
 /// (diagnostics).
 #[cfg(all(windows, feature = "diagnostics"))]

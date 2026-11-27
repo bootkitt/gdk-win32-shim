@@ -9340,12 +9340,23 @@ impl Meter {
         let biggest = BUDGET_NOTES[1].swap(0, Ordering::Relaxed);
         // `VICTORY_LIVE_FAULTS=1`: one short warn line a second when draws are dropped
         // (pair with `VICTORY_LOG=warn` so the rest of the census stays quiet).
-        if live_faults() && dropped >= 1.0 {
-            tracing::warn!(
-                target: "victory_gpu::faults",
-                "{fps:.1} fps, {ms:.1} ms/frame, draws {draws:.0}, dropped {dropped:.0}/frame (making {making}), left_out {left_out:.0}/frame",
-                making = crate::pipeline::making(),
-            );
+        let (meshlet_dispatches, meshlet_groups) = crate::draw::take_meshlet_collect();
+        if live_faults() && (dropped >= 1.0 || meshlet_dispatches > 0) {
+            if meshlet_dispatches > 0 {
+                tracing::warn!(
+                    target: "victory_gpu::faults",
+                    "{fps:.1} fps, {ms:.1} ms/frame, draws {draws:.0}, dropped {dropped:.0}/frame (making {making}), left_out {left_out:.0}/frame, meshlet_collect left_out {meshlet_d:.0}/frame ({meshlet_g:.0} groups)",
+                    making = crate::pipeline::making(),
+                    meshlet_d = meshlet_dispatches as f64 / frames,
+                    meshlet_g = meshlet_groups as f64 / frames,
+                );
+            } else {
+                tracing::warn!(
+                    target: "victory_gpu::faults",
+                    "{fps:.1} fps, {ms:.1} ms/frame, draws {draws:.0}, dropped {dropped:.0}/frame (making {making}), left_out {left_out:.0}/frame",
+                    making = crate::pipeline::making(),
+                );
+            }
         }
         tracing::info!(
             "indirect mesh dispatches: the largest group count asked for {mesh_largest} (run: at most 65535), {mesh_groups:.0} groups asked per frame; {refused:.2} indirect records a frame ran empty for want of their list's budget (2^27), the largest cost of one {biggest} (0: under 2^22)"

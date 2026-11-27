@@ -1101,6 +1101,59 @@ pub(crate) fn dispatched() -> u64 {
     DISPATCHED.load(Ordering::Relaxed)
 }
 
+/// `CS_CollectTriangles_Meshlets` left out on purpose: dispatches skipped and
+/// thread-groups asked (x*y*z), since the last [`take_meshlet_collect`].
+static MESHLET_COLLECT: [AtomicU64; 2] = [const { AtomicU64::new(0) }; 2];
+
+/// See [`MESHLET_COLLECT`] (for the live-faults / census line).
+pub(crate) fn take_meshlet_collect() -> (u64, u64) {
+    (
+        MESHLET_COLLECT[0].swap(0, Ordering::Relaxed),
+        MESHLET_COLLECT[1].swap(0, Ordering::Relaxed),
+    )
+}
+
+/// Root-table dword offsets of the five UAVs `CS_CollectTriangles_Meshlets`
+/// writes (slot 1): u6, u7, u15, u13, u14. Stride-1 entries are counters /
+/// indirect args; u13 (offset 48, stride 4) is the compacted payload — with
+/// counts zeroed, consumers must not walk it.
+const MESHLET_COLLECT_UAV_DWORDS: [u32; 5] = [24, 32, 40, 48, 56];
+
+/// How many leading dwords of each collect UAV to clear on leave-out (covers
+/// multi-word counters and DispatchMesh / DrawIndexedIndirect args).
+const MESHLET_COLLECT_ZERO_DWORDS: u64 = 16;
+
+/// Zeros the first `dwords` of a buffer view in title memory so a later
+/// host bind that refreshes from title sees empty counters / indirect args.
+fn zero_title_buffer_head(view: &View, dwords: u64) {
+    let Some((address, len)) = crate::descriptor::host::buffer_range(view) else {
+        return;
+    };
+    let Some((base, _)) = crate::descriptor::host::buffer_extent(view) else {
+        return;
+    };
+    let resource = match view {
+        View::Unordered(r, _, _) | View::Shader(r, _) => *r as This,
+        View::Placed(..) => return,
+        _ => return,
+    };
+    let Some((data, _)) = crate::resource::buffer_bytes(resource) else {
+        return;
+    };
+    if address < base {
+        return;
+    }
+    let offset = (address - base) as usize;
+    let n = (dwords.saturating_mul(4)).min(len) as usize;
+    if n == 0 {
+        return;
+    }
+    // SAFETY: `data` maps the title buffer; `offset + n` lies in the view.
+    unsafe {
+        std::ptr::write_bytes(data.add(offset), 0, n);
+    }
+}
+
 /// What a render target or depth view of the host is made from: the host
 /// texture, and [`crate::descriptor::RtvRecord::key`].
 type TargetKey = (usize, (usize, [u32; 7]));
@@ -3681,6 +3734,40 @@ impl State {
         });
     }
 
+    /// No-op for `CS_CollectTriangles_Meshlets`: count the ask, zero the UAV
+    /// heads the shader would have written (counters / indirect args) so a
+    /// later pass that reads them sees count=0 instead of last frame's
+    /// values. Title UAV barriers around the dispatch still run.
+    fn leave_out_meshlet_collect(&mut self, groups: [u32; 3]) {
+        let [x, y, z] = groups;
+        let thread_groups = u64::from(x) * u64::from(y) * u64::from(z);
+        MESHLET_COLLECT[0].fetch_add(1, Ordering::Relaxed);
+        MESHLET_COLLECT[1].fetch_add(thread_groups, Ordering::Relaxed);
+        once!(
+            groups = format_args!("{x}x{y}x{z}"),
+            "CS_CollectTriangles_Meshlets left out: output UAV counters zeroed"
+        );
+        self.zero_meshlet_collect_outputs();
+        // Downstream treats the outputs as written (empty); keep batch sync
+        // as a real dispatch would.
+        self.buffers_written();
+    }
+
+    /// Clears the leading dwords of each CollectTriangles UAV bound in
+    /// compute root slot 1 (title memory). Write-watching picks the change
+    /// up so the next host bind refreshes zeros onto the card.
+    fn zero_meshlet_collect_outputs(&self) {
+        let Some(&Root::Table(table)) = self.compute.get(1) else {
+            return;
+        };
+        for &dword in &MESHLET_COLLECT_UAV_DWORDS {
+            let Some(view) = crate::descriptor::view(table + u64::from(dword) * 4) else {
+                continue;
+            };
+            zero_title_buffer_head(&view, MESHLET_COLLECT_ZERO_DWORDS);
+        }
+    }
+
     /// Runs a dispatch on the host.
     pub(crate) fn dispatch(&mut self, list: &HostList, x: u32, y: u32, z: u32, flags: u32) {
         // It may write the arguments a window holds clamped.
@@ -3702,6 +3789,10 @@ impl State {
             return;
         }
         let Some(p) = crate::pipeline::host_pipeline(self.pipeline as This) else {
+            if crate::pipeline::is_meshlet_collect_left_out(self.pipeline as This) {
+                self.leave_out_meshlet_collect([x, y, z]);
+                return;
+            }
             once!(
                 pipeline = format_args!("{:#x}", self.pipeline),
                 "a dispatch without a host pipeline dropped"
@@ -5084,6 +5175,12 @@ impl State {
         #[cfg(not(feature = "diagnostics"))]
         let why = |_: &str| {};
         let Some(p) = crate::pipeline::host_pipeline(self.pipeline as This) else {
+            if kind == DISPATCH && crate::pipeline::is_meshlet_collect_left_out(self.pipeline as This) {
+                // Indirect: the GPU would read the group count; for the census
+                // use the title's max as an upper bound on thread groups.
+                self.leave_out_meshlet_collect([max, 1, 1]);
+                return true;
+            }
             #[cfg(feature = "diagnostics")]
             crate::pipeline::note_drop(self.pipeline as This);
             return false;

@@ -92,12 +92,36 @@ fn water_light_left_out(shaders: &[Arc<Shader>]) -> bool {
         && shaders.iter().any(|s| WATER_LIGHT.contains(&s.hash.as_str()))
 }
 
+/// `vfx_triangleClip:CS_CollectTriangles_Meshlets` (GTA VI): groups of 1024, full 32 KiB
+/// LDS, wave64 with `v_mbcnt` + `ds_add_rtn` compaction. No safe wave32 lowering yet
+/// (override path is the target); on 32-lane hosts leave it out so dispatches are not
+/// dropped as "does not translate" and so output counters/indirect args can be zeroed.
+/// `VICTORY_MESHLET_COLLECT=1` runs the refused path as before.
+pub(crate) const MESHLET_COLLECT: &str = "6b82bc7d22016cb5";
+
+fn meshlet_collect_left_out(shaders: &[Arc<Shader>]) -> bool {
+    static ASKED: OnceLock<bool> = OnceLock::new();
+    !*ASKED.get_or_init(|| std::env::var_os("VICTORY_MESHLET_COLLECT").is_some_and(|v| v == "1"))
+        && victory_shader::emit::host_settings()[0] == 32
+        && shaders.iter().any(|s| s.hash == MESHLET_COLLECT)
+}
+
+/// Whether `p` is the meshlet triangle collect left out on purpose.
+pub(crate) fn is_meshlet_collect_left_out(p: &Pending) -> bool {
+    p.left_out.is_some() && p.shaders.iter().any(|s| s.hash == MESHLET_COLLECT)
+}
+
 fn left_out(shaders: &[Arc<Shader>]) -> Option<&'static str> {
     if !leave_out().is_empty() && shaders.iter().any(|s| leave_out().contains(&s.hash)) {
         return Some("named in VICTORY_LEAVE_OUT, left out");
     }
     if water_light_left_out(shaders) {
         return Some("the water's tiled light on a host of 32-lane waves (dark blocks; VICTORY_WATER_LIGHT=1 runs it), left out");
+    }
+    if meshlet_collect_left_out(shaders) {
+        return Some(
+            "CS_CollectTriangles_Meshlets on a host of 32-lane waves (no wave32 lowering yet; VICTORY_MESHLET_COLLECT=1 runs the refused path), left out",
+        );
     }
     static SKIP_RT_RESOLVE: OnceLock<bool> = OnceLock::new();
     let skip_rt = *SKIP_RT_RESOLVE.get_or_init(|| {
