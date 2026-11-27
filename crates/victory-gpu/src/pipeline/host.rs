@@ -406,7 +406,7 @@ fn refuse(reason: &'static str, shaders: &[Arc<Shader>]) -> Option<HostPipeline>
     let mut seen = SEEN.lock().unwrap_or_else(|e| e.into_inner());
     if !seen.contains(&reason) {
         seen.push(reason);
-        tracing::warn!(?shaders, "no host pipeline: {reason} (logged once)");
+        tracing::warn!(target: "victory_gpu::faults", ?shaders, "no host pipeline: {reason} (logged once)");
     }
     None
 }
@@ -629,7 +629,7 @@ impl HostPipeline {
             let pso = match made {
                 Ok(pso) => pso,
                 Err(e) => {
-                    tracing::warn!(error = %e, ?shaders, "host pipeline refused");
+                    tracing::warn!(target: "victory_gpu::faults", error = %e, ?shaders, "host pipeline refused");
                     host.log_messages();
                     return None;
                 }
@@ -682,7 +682,7 @@ impl HostPipeline {
             let pso = match mesh_pipeline(&host.device, &root, code(0), code(1), g, depth_bounds, &name) {
                 Ok(pso) => pso,
                 Err(e) => {
-                    tracing::warn!(error = %e, ?shaders, "host mesh pipeline refused");
+                    tracing::warn!(target: "victory_gpu::faults", error = %e, ?shaders, "host mesh pipeline refused");
                     host.log_messages();
                     return None;
                 }
@@ -779,7 +779,7 @@ impl HostPipeline {
         let mut made = make(&desc, &name(rect_gs.as_ref()));
         if made.is_err() && rect_gs.is_some() {
             // The host refused the geometry stage: once more without it.
-            tracing::warn!(?shaders, "host pipeline refused with the rectangle geometry stage");
+            tracing::warn!(target: "victory_gpu::faults", ?shaders, "host pipeline refused with the rectangle geometry stage");
             host.log_messages();
             desc.GS = D3D12_SHADER_BYTECODE::default();
             rect_gs = None;
@@ -788,7 +788,7 @@ impl HostPipeline {
         let pso = match made {
             Ok(pso) => pso,
             Err(e) => {
-                tracing::warn!(error = %e, ?shaders, "host pipeline refused");
+                tracing::warn!(target: "victory_gpu::faults", error = %e, ?shaders, "host pipeline refused");
                 host.log_messages();
                 return None;
             }

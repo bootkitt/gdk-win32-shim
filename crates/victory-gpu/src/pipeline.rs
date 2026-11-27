@@ -173,6 +173,7 @@ impl Shader {
                         "shader translated"
                     ),
                     Err(e) => tracing::warn!(
+                        target: "victory_gpu::faults",
                         stage = self.stage,
                         hash = %self.hash,
                         error = %e,

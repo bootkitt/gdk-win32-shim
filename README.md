@@ -1,4 +1,4 @@
-# VIctory on NVIDIA
+# gdk-win32-shim
 
 > **Reporting a problem?** Please attach **both** logs from the run that went
 > wrong. Without them we can only guess. Paste `%LOCALAPPDATA%` into the address
@@ -108,8 +108,8 @@ Install [Rust](https://rustup.rs) and the
 with "Desktop development with C++", then in PowerShell:
 
 ```powershell
-git clone https://github.com/trustno1-coder/VIctory-NVIDIA
-cd VIctory-NVIDIA
+git clone https://github.com/bootkitt/gdk-win32-shim
+cd gdk-win32-shim
 .\Get-NVIDIA-DLSS.cmd
 powershell -ExecutionPolicy Bypass -File scripts\play-nvidia.ps1 -Exe 'D:\Games\MyDump\game_scarlett_master.exe'
 ```
@@ -306,8 +306,8 @@ title's Xbox Series build v1.0.2.1 (the folder with
 `game_scarlett_master.exe`).
 
 ```powershell
-git clone https://github.com/trustno1-coder/VIctory-NVIDIA
-cd VIctory-NVIDIA
+git clone https://github.com/bootkitt/gdk-win32-shim
+cd gdk-win32-shim
 copy victory.example.toml victory.toml      # then set game_dir to your dump's folder, outside this one
 .\Get-NVIDIA-DLSS.cmd                        # once: NVIDIA's DLSS and frame generation files, about 70 MB
 scripts\play-nvidia.ps1 -Exe 'D:\Games\MyDump\game_scarlett_master.exe'
@@ -358,6 +358,9 @@ delete that file to go back to them. Full screen: start the game, then run
 
 A tree of other people's work with a little on top; the history is kept.
 
+- **[trustno1-coder/VIctory-NVIDIA](https://github.com/trustno1-coder/VIctory-NVIDIA)**
+  — we benefited from this project as our main NVIDIA-tuned source (DLSS, frame
+  generation, F1/F3, RTX fixes and packaging).
 - **[foxhound](https://github.com/readmet3xt-lab/foxhound)** by
   readmet3xt-lab: the base of this fork since 2026-11-26, and through it:
 - **[VIctory](https://github.com/Marvisak/VIctory)** by Marvisak and its

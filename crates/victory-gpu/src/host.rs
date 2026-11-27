@@ -9261,6 +9261,13 @@ struct Presenter {
 /// line at the top of the picture (`menu.rs`).
 pub(crate) static METER_FPS_TENTHS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
+/// `VICTORY_LIVE_FAULTS=1`: log dropped-draw lines (and keep pipeline/warn noise) under
+/// `victory_gpu::faults` so a `VICTORY_LOG=warn` run stays readable.
+fn live_faults() -> bool {
+    static ON: OnceLock<bool> = OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("VICTORY_LIVE_FAULTS").is_some_and(|v| v == "1"))
+}
+
 struct Meter {
     since: std::time::Instant,
     frames: u32,
@@ -9331,6 +9338,15 @@ impl Meter {
         let mesh_groups = MESH_GROUPS[1].swap(0, Ordering::Relaxed) as f64 / frames;
         let refused = BUDGET_NOTES[0].swap(0, Ordering::Relaxed) as f64 / frames;
         let biggest = BUDGET_NOTES[1].swap(0, Ordering::Relaxed);
+        // `VICTORY_LIVE_FAULTS=1`: one short warn line a second when draws are dropped
+        // (pair with `VICTORY_LOG=warn` so the rest of the census stays quiet).
+        if live_faults() && dropped >= 1.0 {
+            tracing::warn!(
+                target: "victory_gpu::faults",
+                "{fps:.1} fps, {ms:.1} ms/frame, draws {draws:.0}, dropped {dropped:.0}/frame (making {making}), left_out {left_out:.0}/frame",
+                making = crate::pipeline::making(),
+            );
+        }
         tracing::info!(
             "indirect mesh dispatches: the largest group count asked for {mesh_largest} (run: at most 65535), {mesh_groups:.0} groups asked per frame; {refused:.2} indirect records a frame ran empty for want of their list's budget (2^27), the largest cost of one {biggest} (0: under 2^22)"
         );
