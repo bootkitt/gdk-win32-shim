@@ -84,3 +84,6 @@ Thumbs.db
 # What the F1 menu saved
 /victory-settings.txt
 /victory-settings.*.txt
+
+# Local live-fault / shader dump scratch (never commit dumps)
+/.temp/

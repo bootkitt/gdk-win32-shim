@@ -1,7 +1,7 @@
-//! The run's numbers on the picture, in every build (`VICTORY_PANEL=1`; off
-//! by default; F3 or the settings menu shows and hides it while our window
-//! has the focus; the time spent recording is counted in diagnostics builds
-//! only): white
+//! The run's numbers on the picture, in every build (on by default;
+//! `VICTORY_PANEL=0` turns it off; F3 or the settings menu shows and hides
+//! it while our window has the focus; the time spent recording is counted
+//! in diagnostics builds only): white
 //! text on a black box in the upper left corner of what is shown, so that a
 //! screenshot carries them, with what it costs itself on the submitting
 //! thread. Made again twice a second from the counters of
@@ -39,7 +39,8 @@ const UPLOADS: usize = 4;
 
 fn asked() -> bool {
     static ON: OnceLock<bool> = OnceLock::new();
-    *ON.get_or_init(|| crate::switch::on("VICTORY_PANEL"))
+    // On unless explicitly off (`VICTORY_PANEL=0`), same idea as the FPS line.
+    *ON.get_or_init(|| std::env::var_os("VICTORY_PANEL").is_none_or(|v| v != "0"))
 }
 
 /// Whether it is shown now.

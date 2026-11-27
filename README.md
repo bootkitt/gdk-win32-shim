@@ -98,8 +98,8 @@
 
 - **F1** brings up the settings menu (arrow keys pick and change, Enter does
   it): DLSS, frame generation, frame rate cap and more.
-- **F3** shows the stats panel (frame rate, frame generation, draws, GPU and
-  memory numbers).
+- **F3** hides or shows the stats panel (on by default: frame rate, frame
+  generation, draws, GPU and memory numbers).
 
 **Building it yourself instead**
 
@@ -261,10 +261,9 @@ What this fork has on top of it is under
 
 ## Where it stands
 
-Tested on one PC: Windows 11, Ryzen 7 9800X3D, 64 GB RAM, **GeForce RTX 5070
-12 GB**; the title's Xbox Series build v1.0.2.1, Series X profile, 2560x1440
-output, DLSS Quality. Frame rates are the layer's own count, in the opening
-rooms.
+Upstream VIctory-NVIDIA figures (their measured PC): Windows 11, Ryzen 7 9800X3D,
+64 GB RAM, **GeForce RTX 5070 12 GB**; Xbox Series build v1.0.2.1, Series X,
+2560x1440, DLSS Quality.
 
 | | |
 |---|---|
@@ -273,19 +272,41 @@ rooms.
 | Device losses, crashes | none in the measured runs |
 | Before this base (Series S, 720p to 1080p by DLSS) | 15-17 frames a second in the same rooms |
 
-foxhound's own measurements, on an RTX 4070 SUPER, are in its README.
+### This fork — measured FPS (2026-11-28)
+
+Local run on **GeForce RTX 4070 12 GB**, Series X 2560x1440, DLSS Quality,
+fault-only live log (`scripts\live-faults.ps1` / `LIVE_FAULTS.cmd`). After the
+console pipeline create slots **0x1c8 / 0x218** were wired to the stream path
+(they used to return `E_NOTIMPL` and drop every draw that used those PSOs):
+
+| | |
+|---|---|
+| Cold open / first minutes | about **3–8 fps** while `making` is hundreds (driver compiling pipelines) |
+| After pipelines catch up (`making 0`) | about **16–26 fps** rendered (~38–62 ms/frame) in interior scenes |
+| Steady drops | about **300–550** draws/frame still dropped; about **750–800** left out on purpose (ray-tracing passes without the BVH builder) |
+| Frame generation on RTX 40 | **2x** at most (asking for 3x is clamped by the driver) |
+
+`victory warm` after a play session cuts the cold stutter on the next start.
+foxhound's own 4070 SUPER numbers remain in `docs/README-foxhound.md`.
 
 What is known to be wrong:
 
 - **No ray tracing.** The title's own is off (`VICTORY_BVH_BUILDER=1`, or the
   menu's RAY TRACING, turns it on: slow and with a broken picture on this
-  base). An estimate stands in for indirect light and reflections.
+  base). An estimate stands in for indirect light and reflections. Those
+  passes show up as `left_out` in the live fault log.
+- **Some draws still drop with `making 0`.** A few shaders fail to translate
+  (example: compute `6b82bc7d22016cb5`, wave64 with no wave32 lowering); others
+  wait on host views or texture room. Use `LIVE_FAULTS.cmd -DumpShaders` (or
+  `VICTORY_SHADER_SAVE`) and the refused dump under
+  `%LOCALAPPDATA%\victory\shader-refused` when chasing them.
 - **Frame generation needs room in the card's memory.** The layer fills the
   card with textures up to its budget; with frame generation on from the start
   the launcher holds a fifth of the budget back (a little less while it is only
   ready), so a few more textures can come late. Switched on from the menu on a
   full 12 GB card it can still say that memory is past the budget; it then
-  runs, perhaps unevenly.
+  runs, perhaps unevenly. Streamline may also warn when a frame takes over
+  100 ms.
 - **Frames are only generated while the game's window has the focus**, and
   about a second passes after a change before they come.
 - **The first run of every new build stutters** while the driver compiles

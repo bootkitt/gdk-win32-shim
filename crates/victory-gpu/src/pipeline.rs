@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use std::mem::offset_of;
 use std::sync::{Arc, Mutex, OnceLock};
 
-use crate::object::{self, E_INVALIDARG, HRESULT, Iid, Object, PIPELINE, Table, This, guid};
+use crate::object::{self, E_INVALIDARG, E_NOTIMPL, HRESULT, Iid, Object, PIPELINE, Table, This, guid};
 use crate::resource::PAGEABLE_IIDS;
 
 const PIPELINE_IIDS: [Iid; 4] = [
@@ -172,13 +172,24 @@ impl Shader {
                         samplers = t.host.samplers.len(),
                         "shader translated"
                     ),
-                    Err(e) => tracing::warn!(
-                        target: "victory_gpu::faults",
-                        stage = self.stage,
-                        hash = %self.hash,
-                        error = %e,
-                        "shader does not translate; its pipelines' draws are dropped"
-                    ),
+                    Err(e) => {
+                        if std::env::var_os("VICTORY_SHADER_SAVE").is_none() {
+                            let dir = std::env::var_os("LOCALAPPDATA")
+                                .map(std::path::PathBuf::from)
+                                .map(|p| p.join("victory").join("shader-refused"))
+                                .unwrap_or_else(|| std::path::PathBuf::from(".temp/shader-refused"));
+                            let _ = std::fs::create_dir_all(&dir);
+                            let stem = format!("{}.{}", self.hash, self.stage);
+                            let _ = std::fs::write(dir.join(format!("{stem}.cdxil")), &self.container);
+                        }
+                        tracing::warn!(
+                            target: "victory_gpu::faults",
+                            stage = self.stage,
+                            hash = %self.hash,
+                            error = %e,
+                            "shader does not translate; its pipelines' draws are dropped"
+                        );
+                    }
                 }
                 done.ok()
             })
@@ -693,6 +704,50 @@ fn subobject(kind: u32) -> Option<(usize, Option<&'static str>)> {
         9 | 13 | 14 | 16 | 18 | 20 => Some((8, None)),
         _ => None,
     }
+}
+
+/// Reads one guest qword; false if the address is not readable.
+fn read_guest_u64(at: usize) -> Option<u64> {
+    let mut bytes = [0u8; 8];
+    (at != 0 && crate::host::read_into(at as *const u8, &mut bytes)).then(|| u64::from_le_bytes(bytes))
+}
+
+/// The stream half of a pipeline description: the title keeps it on an inner
+/// object (vtable at +0, stream byte count at +0x10, stream at +0x18). Both
+/// device slots 0x1c8 and 0x218 pass that wrapper (title+0x2477578 and
+/// title+0x24800d5).
+fn wrapped_stream(desc: *const u8) -> Option<StreamDesc> {
+    let head = read_guest_u64(desc.addr())?;
+    let size = read_guest_u64(head as usize + 0x10)?;
+    let stream = read_guest_u64(head as usize + 0x18)?;
+    let size = usize::try_from(size).ok()?;
+    if size == 0 || size > 1 << 22 || stream == 0 {
+        return None;
+    }
+    let mut kind = [0u8; 4];
+    if !crate::host::read_into(stream as *const u8, &mut kind) {
+        return None;
+    }
+    subobject(u32::from_le_bytes(kind))?;
+    Some(StreamDesc {
+        size,
+        stream: stream as *const u8,
+    })
+}
+
+/// Device methods 0x1c8 and 0x218: like [`create_stream`], through the
+/// wrapper layout above. On failure, returns `E_NOTIMPL` so the title goes
+/// without the pipeline, as with the old stub.
+pub(crate) extern "system" fn create_wrapped_stream(
+    _: This,
+    desc: *const u8,
+    iid: *const Iid,
+    out: *mut This,
+) -> HRESULT {
+    let Some(stream_desc) = wrapped_stream(desc) else {
+        return E_NOTIMPL;
+    };
+    create_stream(std::ptr::null(), &stream_desc, iid, out)
 }
 
 /// Device method: a pipeline from a stream; the shaders are kept, and the

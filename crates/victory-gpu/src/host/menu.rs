@@ -88,7 +88,7 @@ const ITEMS: &[Item] = &[
     Item { var: MFG, label: "MFG UNLOCKER (MOD, RTX 20/30)", values: UNSET_ON, live: false },
     Item { var: "VICTORY_MENU_FPS", label: "FRAME RATE CAP", values: &[("1000", "NONE"), ("120", "120"), ("60", "60"), ("30", "30 (THE GAME)")], live: false },
     Item { var: "VICTORY_FPS_LINE", label: "FPS AT THE TOP", values: &[("1", "ON"), ("0", "OFF")], live: true },
-    Item { var: "VICTORY_PANEL", label: "STATS PANEL (F3)", values: &[("0", "OFF"), ("1", "ON")], live: true },
+    Item { var: "VICTORY_PANEL", label: "STATS PANEL (F3)", values: &[("1", "ON"), ("0", "OFF")], live: true },
     Item { var: "VICTORY_FULLSCREEN", label: "FULLSCREEN (NO BORDER)", values: UNSET_ON, live: false },
     Item { var: "VICTORY_MOUSE_CAPTURE", label: "MOUSE CAPTURE", values: UNSET_ON, live: false },
     Item { var: "VICTORY_IME_ENGLISH", label: "ENGLISH KEYBOARD", values: UNSET_ON, live: false },
@@ -448,7 +448,7 @@ impl Menu {
             // Off (0) or the frames shown for each one rendered, from the next present on.
             "VICTORY_MENU_FRAMEGEN" => crate::streamline::set_framegen(value.parse().unwrap_or(0)),
             "VICTORY_FPS_LINE" => fps_line_on().store(value != "0", Ordering::Relaxed),
-            "VICTORY_PANEL" => super::panel::shown().store(value == "1", Ordering::Relaxed),
+            "VICTORY_PANEL" => super::panel::shown().store(value != "0", Ordering::Relaxed),
             _ => {}
         }
     }

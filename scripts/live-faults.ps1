@@ -19,6 +19,8 @@ param(
     [switch]$NoFrameGenReady,
     [ValidateSet('auto', 'dlss', 'fsr')][string]$FgType = 'auto',
     [ValidateRange(1, 1000)][int]$Fps = 1000,
+    # Dump every translated/failed shader (.cdxil + .dxil) under .temp\shader-save
+    [switch]$DumpShaders,
     [hashtable]$More = @{}
 )
 $ErrorActionPreference = 'Stop'
@@ -57,12 +59,18 @@ $latest = Join-Path $temp 'live-faults.log'
 "# live-faults $stamp build=$Build exe=$Exe" | Set-Content -LiteralPath $faultLog -Encoding utf8
 Copy-Item -LiteralPath $faultLog -Destination $latest -Force
 
+$shaderSave = Join-Path $temp 'shader-save'
 $faultMore = @{
     VICTORY_LIVE_FAULTS   = '1'
     VICTORY_LOG           = 'warn'
     VICTORY_LOG_FILE      = $faultLog
     # Warmup restart would drop this filter and the .temp log attachment.
     VICTORY_WARMUP_RESTART = '0'
+}
+if ($DumpShaders) {
+    New-Item -ItemType Directory -Force -Path $shaderSave | Out-Null
+    $faultMore.VICTORY_SHADER_SAVE = $shaderSave
+    Write-Host "Shader dump: $shaderSave (every .cdxil/.dxil as pipelines are made)"
 }
 foreach ($k in @($More.Keys)) { $faultMore[$k] = $More[$k] }
 
