@@ -1832,7 +1832,11 @@ impl State {
             return false;
         }
         let Some(p) = crate::pipeline::host_pipeline(self.pipeline as This) else {
-            if !crate::pipeline::is_left_out(self.pipeline as This) {
+            // Left-out and still-making are tracked elsewhere; only refuses
+            // and other missing hosts tag the drop why-list.
+            if !crate::pipeline::is_left_out(self.pipeline as This)
+                && !crate::pipeline::is_still_making(self.pipeline as This)
+            {
                 crate::pipeline::note_drop(self.pipeline as This);
             }
             return false;
@@ -3336,7 +3340,14 @@ impl State {
                     });
                     continue;
                 }
-                if recheck_soon() {
+                // Under full-card / commit pressure, next-frame rechecks of
+                // streaming slots fought the same few textures every frame
+                // (late loads, ~3 fps). Keep the default four-frame gap then.
+                if recheck_soon()
+                    && room
+                    && !crate::residency::pressured()
+                    && !crate::residency::critical_commit()
+                {
                     again_in = 1;
                 }
                 let n = HEAP_TEXTURES_RECHECKED[1].fetch_add(1, Ordering::Relaxed);
@@ -3801,6 +3812,10 @@ impl State {
             }
             if crate::pipeline::is_left_out(self.pipeline as This) {
                 // [`ready`] already counted LEFT_OUT.
+                return;
+            }
+            if crate::pipeline::is_still_making(self.pipeline as This) {
+                // Wait covered by `making` on the frame line; not a fault drop.
                 return;
             }
             once!(
@@ -5202,6 +5217,10 @@ impl State {
             if crate::pipeline::is_left_out(self.pipeline as This) {
                 // [`ready`] already counted LEFT_OUT.
                 return true;
+            }
+            if crate::pipeline::is_still_making(self.pipeline as This) {
+                // Wait covered by `making` on the frame line; not a fault drop.
+                return false;
             }
             #[cfg(feature = "diagnostics")]
             crate::pipeline::note_drop(self.pipeline as This);
