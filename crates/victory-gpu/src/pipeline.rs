@@ -490,6 +490,24 @@ pub(crate) fn is_meshlet_collect_left_out(this: This) -> bool {
     !this.is_null() && make::is_meshlet_collect_left_out(&pipeline(this).host)
 }
 
+/// Whether `this` was left out on purpose at pipeline creation.
+#[cfg(windows)]
+pub(crate) fn is_left_out(this: This) -> bool {
+    !this.is_null() && make::is_left_out(&pipeline(this).host)
+}
+
+/// Whether `this` is still being made (queued / compiling; no refuse yet).
+#[cfg(windows)]
+pub(crate) fn is_still_making(this: This) -> bool {
+    !this.is_null() && make::is_still_making(&pipeline(this).host)
+}
+
+/// Counts one intentional leave-out ask (builder off, etc.).
+#[cfg(windows)]
+pub(crate) fn count_left_out() {
+    make::count_left_out();
+}
+
 /// Draws and dispatches dropped since the last [`take_drops`], by reason.
 #[cfg(windows)]
 static DROPS: Mutex<Option<HashMap<String, u64>>> = Mutex::new(None);

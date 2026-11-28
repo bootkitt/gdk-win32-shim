@@ -1085,13 +1085,16 @@ fn before<T>(slot: usize, f: impl FnOnce() -> T) -> T {
 pub(crate) static HEAP_TEXTURE_PASSES: [AtomicU64; 8] = [const { AtomicU64::new(0) }; 8];
 static DROPPED: AtomicU64 = AtomicU64::new(0);
 
-/// Marks the last traced draw as not run on the host.
-#[cfg(feature = "diagnostics")]
-fn dropped(pipeline: usize) {
-    crate::pipeline::note_drop(pipeline as This);
-    if let Some(last) = FRAME.lock().unwrap_or_else(|e| e.into_inner()).last_mut() {
-        last.push_str(" DROPPED");
+/// Counts a failed draw/dispatch toward [`DROPPED`], unless the pipeline was
+/// left out on purpose ([`ready`] already counted left_out) or is still being
+/// made (`making` on the frame line already covers that wait).
+fn count_drop(pipeline: usize) {
+    if crate::pipeline::is_left_out(pipeline as This)
+        || crate::pipeline::is_still_making(pipeline as This)
+    {
+        return;
     }
+    DROPPED.fetch_add(1, Ordering::Relaxed);
 }
 
 /// Dispatches run on the host so far.
@@ -1829,7 +1832,9 @@ impl State {
             return false;
         }
         let Some(p) = crate::pipeline::host_pipeline(self.pipeline as This) else {
-            crate::pipeline::note_drop(self.pipeline as This);
+            if !crate::pipeline::is_left_out(self.pipeline as This) {
+                crate::pipeline::note_drop(self.pipeline as This);
+            }
             return false;
         };
         if p.compute || p.mesh != mesh {
@@ -1876,6 +1881,7 @@ impl State {
         if indexed {
             let v = self.index;
             let Some(shadow) = crate::shadow::find_any(v.address, u64::from(v.size)) else {
+                crate::pipeline::note_why("index buffer not in title memory".into());
                 return false;
             };
             shadow.refresh(list, v.address, u64::from(v.size));
@@ -3784,17 +3790,17 @@ impl State {
         }
         // The ray-tracing structure builder's stages run all or none.
         if crate::pipeline::is_builder(self.pipeline as This) && !crate::pipeline::builder_runs() {
-            DROPPED.fetch_add(1, Ordering::Relaxed);
-            #[cfg(feature = "diagnostics")]
-            {
-                crate::pipeline::note_why("a stage of the ray-tracing structure builder, which is off".to_owned());
-                self.list_dropped_roots([x, y, z]);
-            }
+            // Intentional: builder off (`VICTORY_BVH_BUILDER` unset). Not a fault drop.
+            crate::pipeline::count_left_out();
             return;
         }
         let Some(p) = crate::pipeline::host_pipeline(self.pipeline as This) else {
             if crate::pipeline::is_meshlet_collect_left_out(self.pipeline as This) {
                 self.leave_out_meshlet_collect([x, y, z]);
+                return;
+            }
+            if crate::pipeline::is_left_out(self.pipeline as This) {
+                // [`ready`] already counted LEFT_OUT.
                 return;
             }
             once!(
@@ -4372,9 +4378,12 @@ impl State {
         self.window = None;
         #[cfg(feature = "diagnostics")]
         self.trace("mesh", x, 0);
-        let ran = mesh_test() != 1
-            && mesh_kept(self.pipeline)
-            && self.prepare_for(list, false, true)
+        if mesh_test() == 1 || !mesh_kept(self.pipeline) {
+            crate::pipeline::note_why("mesh draw skipped (VICTORY_MESH_TEST)".into());
+            count_drop(self.pipeline);
+            return;
+        }
+        let ran = self.prepare_for(list, false, true)
             && match list.list.cast::<ID3D12GraphicsCommandList6>() {
                 Ok(l6) => {
                     #[cfg(feature = "diagnostics")]
@@ -4396,11 +4405,13 @@ impl State {
                     DRAWN.fetch_add(1, Ordering::Relaxed);
                     true
                 }
-                Err(_) => false,
+                Err(_) => {
+                    crate::pipeline::note_why("no ID3D12GraphicsCommandList6 for mesh".into());
+                    false
+                }
             };
         if !ran {
-            DROPPED.fetch_add(1, Ordering::Relaxed);
-            // Reason tagged in [`prepare_for`] / bind when possible.
+            count_drop(self.pipeline);
         }
     }
 
@@ -4859,7 +4870,14 @@ impl State {
         // A pipeline with the rectangle geometry stage draws the title's
         // vertices as they are; any other gets its rectangles expanded.
         let rects = self.topology == RECTANGLES && !self.completes_rects();
-        let ran = ready && (!rects || self.rectangles(list, vertices, first));
+        let ran = if !ready {
+            false
+        } else if rects && !self.rectangles(list, vertices, first) {
+            crate::pipeline::note_why("rectangle expand failed".into());
+            false
+        } else {
+            true
+        };
         if ran {
             // Rectangles were expanded into their own vertex buffers.
             let (count, from) = if rects {
@@ -4885,7 +4903,7 @@ impl State {
             DRAWN.fetch_add(1, Ordering::Relaxed);
         }
         if !ran {
-            DROPPED.fetch_add(1, Ordering::Relaxed);
+            count_drop(self.pipeline);
         }
     }
 
@@ -5052,6 +5070,7 @@ impl State {
         let lost = self.topology == RECTANGLES && !self.completes_rects();
         if lost {
             once!("indexed rectangles not drawn");
+            crate::pipeline::note_why("indexed rectangles not drawn".into());
         }
         let ran = !lost && self.prepare(list, true);
         if ran {
@@ -5066,7 +5085,7 @@ impl State {
             DRAWN.fetch_add(1, Ordering::Relaxed);
         }
         if !ran {
-            DROPPED.fetch_add(1, Ordering::Relaxed);
+            count_drop(self.pipeline);
         }
     }
 }
@@ -5162,7 +5181,8 @@ impl State {
             return false;
         }
         if crate::pipeline::is_builder(self.pipeline as This) && !crate::pipeline::builder_runs() {
-            return false;
+            crate::pipeline::count_left_out();
+            return true;
         }
         const DRAW: u32 = 0;
         const INDEXED: u32 = 1;
@@ -5177,6 +5197,10 @@ impl State {
                 // Indirect: the GPU would read the group count; for the census
                 // use the title's max as an upper bound on thread groups.
                 self.leave_out_meshlet_collect([max, 1, 1]);
+                return true;
+            }
+            if crate::pipeline::is_left_out(self.pipeline as This) {
+                // [`ready`] already counted LEFT_OUT.
                 return true;
             }
             #[cfg(feature = "diagnostics")]

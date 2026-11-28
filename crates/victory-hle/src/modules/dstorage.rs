@@ -2146,7 +2146,7 @@ mod tests {
         for round in 0..2 {
             for mode in [Io::One, Io::Handles, Io::Overlapped, Io::Direct] {
                 let file = Files::open_for_test(&path, mode);
-                let at: Vec<u64> = (0..READS).map(|_| random() % (len - SIZE as u64) & !15).collect();
+                let at: Vec<u64> = (0..READS).map(|_| (random() % (len - SIZE as u64)) & !15).collect();
                 for pass in ["cold", "again"] {
                     let next = std::sync::atomic::AtomicUsize::new(0);
                     let busy = AtomicU64::new(0);

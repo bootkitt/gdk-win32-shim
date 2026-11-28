@@ -111,6 +111,23 @@ pub(crate) fn is_meshlet_collect_left_out(p: &Pending) -> bool {
     p.left_out.is_some() && p.shaders.iter().any(|s| s.hash == MESHLET_COLLECT)
 }
 
+/// Whether `p` was left out on purpose at creation ([`left_out`]).
+pub(crate) fn is_left_out(p: &Pending) -> bool {
+    p.left_out.is_some()
+}
+
+/// Whether `p` is still queued or compiling (no answer yet). Not a refuse:
+/// the frame line already shows `making`; counting these as dropped flooded
+/// the why list while textures loaded.
+pub(crate) fn is_still_making(p: &Pending) -> bool {
+    p.left_out.is_none() && p.made.get().is_none()
+}
+
+/// Counts one ask of a pipeline left out on purpose (for the frame line).
+pub(crate) fn count_left_out() {
+    LEFT_OUT.fetch_add(1, Ordering::Relaxed);
+}
+
 fn left_out(shaders: &[Arc<Shader>]) -> Option<&'static str> {
     if !leave_out().is_empty() && shaders.iter().any(|s| leave_out().contains(&s.hash)) {
         return Some("named in VICTORY_LEAVE_OUT, left out");

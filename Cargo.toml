@@ -50,8 +50,8 @@ unused_must_use = "deny"
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
-# This fork: two style lints are let through until the newer code is tidied
-# (tuple-heavy signatures and indexed loops in the translator and GPU side).
+# This fork: style lints let through until the newer GPU / translator code is
+# tidied (tuple-heavy signatures, indexed loops, hex groupings, etc.).
 type_complexity = "allow"
 needless_range_loop = "allow"
 chunks_exact_to_as_chunks = "allow"
@@ -60,6 +60,14 @@ collapsible_match = "allow"
 manual_clamp = "allow"
 implicit_saturating_sub = "allow"
 min_max = "allow"
+unusual_byte_groupings = "allow"
+missing_transmute_annotations = "allow"
+unnecessary_sort_by = "allow"
+needless_borrow = "allow"
+large_enum_variant = "allow"
+manual_is_multiple_of = "allow"
+too_many_arguments = "allow"
+wrong_self_convention = "allow"
 # Upstream warns on unsafe blocks without a SAFETY comment; eleven blocks in
 # this fork's newer GPU code still lack one.
 undocumented_unsafe_blocks = "allow"
