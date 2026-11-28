@@ -43,7 +43,7 @@
 **The easy way: one file, nothing to build**
 
 1. Download `victory.exe` from the
-   [latest release](https://github.com/trustno1-coder/VIctory-NVIDIA/releases/latest).
+   [latest release](https://github.com/bootkitt/gdk-win32-shim/releases/latest).
 2. Put it into the folder of **your own dump** of the title's Xbox Series
    build v1.0.2.1, next to `game_scarlett_master.exe`.
 3. Double-click it. Windows may say the publisher is unknown (the file is not
